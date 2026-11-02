@@ -13,16 +13,9 @@ pub fn default_roots() -> Vec<(PathBuf, &'static str)> {
 }
 
 pub fn default_workspace() -> PathBuf {
-    #[cfg(windows)]
-    {
-        return PathBuf::from(r"C:\work");
-    }
-    #[cfg(not(windows))]
-    {
-        dirs::home_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("Sweep")
-    }
+    dirs::home_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("Sweep")
 }
 
 pub fn default_db_path() -> PathBuf {
@@ -34,22 +27,8 @@ pub fn default_db_path() -> PathBuf {
 
 pub fn ensure_workspace_dir(preferred: Option<PathBuf>) -> Result<PathBuf> {
     let candidate = preferred.unwrap_or_else(default_workspace);
-    match std::fs::create_dir_all(&candidate) {
-        Ok(()) => Ok(candidate),
-        Err(err) => {
-            #[cfg(windows)]
-            {
-                if candidate == PathBuf::from(r"C:\work") {
-                    let fallback = dirs::home_dir()
-                        .unwrap_or_else(|| PathBuf::from("."))
-                        .join("work");
-                    std::fs::create_dir_all(&fallback)?;
-                    return Ok(fallback);
-                }
-            }
-            Err(err.into())
-        }
-    }
+    std::fs::create_dir_all(&candidate)?;
+    Ok(candidate)
 }
 
 pub fn canonicalize_root(path: &Path) -> Result<PathBuf> {

@@ -8,6 +8,7 @@ use sweep_core::{
 
 #[derive(Serialize)]
 struct RootView {
+    id: i64,
     path: String,
     kind: String,
     items: usize,
@@ -31,9 +32,31 @@ struct BoardView {
     last_plan_status: Option<String>,
 }
 
+#[derive(Serialize)]
+struct DefaultRoot {
+    path: String,
+    kind: String,
+    registered: bool,
+}
+
 #[tauri::command]
 fn get_board() -> Result<BoardView, String> {
     board_impl().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_default_roots() -> Result<Vec<DefaultRoot>, String> {
+    list_default_roots_impl().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn add_root(path: String, kind: Option<String>) -> Result<BoardView, String> {
+    add_root_impl(path, kind).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn remove_root(id: i64) -> Result<BoardView, String> {
+    remove_root_impl(id).map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -66,8 +89,12 @@ fn recover_plans() -> Result<String, String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             get_board,
+            list_default_roots,
+            add_root,
+            remove_root,
             scan_roots,
             create_plan,
             apply_plan,
@@ -133,6 +160,7 @@ fn board_impl() -> anyhow::Result<BoardView> {
     let root_views = roots
         .iter()
         .map(|root| RootView {
+            id: root.id,
             path: paths::display_path(Path::new(&root.path)),
             kind: root.kind.clone(),
             items: items.iter().filter(|item| item.root_id == root.id).count(),
@@ -212,6 +240,54 @@ fn recover_impl() -> anyhow::Result<String> {
     recover_mod::run(&mut conn)?;
     scan_impl()?;
     Ok("recovered".to_string())
+}
+
+fn list_default_roots_impl() -> anyhow::Result<Vec<DefaultRoot>> {
+    let conn = db::open(&paths::default_db_path())?;
+    let registered: Vec<String> = db::list_roots(&conn)?
+        .into_iter()
+        .map(|root| paths::display_path(Path::new(&root.path)))
+        .collect();
+    let mut out = Vec::new();
+    for (path, kind) in paths::default_roots() {
+        let canonical = path.canonicalize().unwrap_or(path);
+        let display = paths::display_path(&canonical);
+        out.push(DefaultRoot {
+            registered: registered.iter().any(|item| item == &display),
+            path: display,
+            kind: kind.to_string(),
+        });
+    }
+    Ok(out)
+}
+
+fn add_root_impl(path: String, kind: Option<String>) -> anyhow::Result<BoardView> {
+    let conn = db::open(&paths::default_db_path())?;
+    let workspace = paths::ensure_workspace_dir(None)?;
+    let workspace_id = db::ensure_workspace(&conn, "default")?;
+    for (position, lane) in Lane::all().iter().enumerate() {
+        let cap = match lane {
+            Lane::Bench => Some(12),
+            Lane::Inbox => Some(20),
+            _ => None,
+        };
+        let zone_path = workspace.join(lane.as_str());
+        std::fs::create_dir_all(&zone_path)?;
+        db::ensure_zone(&conn, workspace_id, *lane, &zone_path, cap, position as i64)?;
+    }
+    let canonical = paths::canonicalize_root(Path::new(&path))?;
+    let kind = kind.unwrap_or_else(|| "custom".to_string());
+    db::add_root(&conn, workspace_id, &canonical, &kind, Some(1))?;
+    drop(conn);
+    scan_impl()?;
+    board_impl()
+}
+
+fn remove_root_impl(id: i64) -> anyhow::Result<BoardView> {
+    let mut conn = db::open(&paths::default_db_path())?;
+    db::remove_root(&mut conn, id)?;
+    drop(conn);
+    board_impl()
 }
 
 fn age_days(item: &Item) -> i64 {

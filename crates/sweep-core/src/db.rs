@@ -180,6 +180,14 @@ pub fn list_roots(conn: &Connection) -> Result<Vec<RootRow>> {
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
 }
 
+pub fn remove_root(conn: &mut Connection, root_id: i64) -> Result<()> {
+    let tx = conn.transaction()?;
+    tx.execute("DELETE FROM item WHERE root_id = ?1", [root_id])?;
+    tx.execute("DELETE FROM root WHERE id = ?1", [root_id])?;
+    tx.commit()?;
+    Ok(())
+}
+
 pub fn replace_items_for_root(
     conn: &mut Connection,
     root_id: i64,

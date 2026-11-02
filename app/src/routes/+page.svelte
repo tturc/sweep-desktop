@@ -1,8 +1,10 @@
 <script lang="ts">
   import { invoke } from "@tauri-apps/api/core";
+  import { open } from "@tauri-apps/plugin-dialog";
   import { onMount } from "svelte";
 
-  type Root = { path: string; kind: string; items: number };
+  type Root = { id: number; path: string; kind: string; items: number };
+  type DefaultRoot = { path: string; kind: string; registered: boolean };
   type Suggestion = {
     name: string;
     kind: string;
@@ -35,6 +37,7 @@
   ];
 
   let board: Board | null = $state(null);
+  let defaults: DefaultRoot[] = $state([]);
   let plan: Plan | null = $state(null);
   let busy = $state(false);
   let message = $state("");
@@ -42,6 +45,7 @@
   async function refresh() {
     try {
       board = await invoke<Board>("get_board");
+      defaults = await invoke<DefaultRoot[]>("list_default_roots");
     } catch (error) {
       message = String(error);
     }
@@ -56,6 +60,37 @@
       message = String(error);
     }
     busy = false;
+  }
+
+  async function addRoot(path: string, kind = "custom") {
+    busy = true;
+    try {
+      board = await invoke<Board>("add_root", { path, kind });
+      defaults = await invoke<DefaultRoot[]>("list_default_roots");
+      message = `Added ${path}`;
+    } catch (error) {
+      message = String(error);
+    }
+    busy = false;
+  }
+
+  async function removeRoot(id: number) {
+    busy = true;
+    try {
+      board = await invoke<Board>("remove_root", { id });
+      defaults = await invoke<DefaultRoot[]>("list_default_roots");
+      message = "Root removed.";
+    } catch (error) {
+      message = String(error);
+    }
+    busy = false;
+  }
+
+  async function pickFolder() {
+    const path = await open({ directory: true, multiple: false });
+    if (typeof path === "string") {
+      await addRoot(path, "custom");
+    }
   }
 
   async function makePlan(lane?: string) {
@@ -113,17 +148,35 @@
   </header>
 
   <section class="roots">
+    <span class="roots-label">Roots</span>
     {#each board?.roots ?? [] as root}
       <div class="root">
         <span class="root-kind">{root.kind}</span>
         <strong>{root.items}</strong>
-        <span class="root-path">{root.path}</span>
+        <span class="root-path" title={root.path}>{root.path}</span>
+        <button class="root-remove" title="Remove root" onclick={() => removeRoot(root.id)} disabled={busy}>×</button>
       </div>
     {/each}
-    {#if (board?.roots?.length ?? 0) === 0}
-      <div class="empty">No roots yet. Run <code>sweep init</code> in the CLI, then hit Scan.</div>
-    {/if}
+    <button class="add-root" onclick={pickFolder} disabled={busy}>+ Add folder</button>
+    {#each defaults.filter((item) => !item.registered) as item}
+      <button class="quick-root" onclick={() => addRoot(item.path, item.kind)} disabled={busy}>
+        + {item.kind}
+      </button>
+    {/each}
   </section>
+
+  {#if (board?.roots?.length ?? 0) === 0}
+    <section class="setup">
+      <strong>Choose what Sweep can see.</strong>
+      <p>Sweep only reads the folders you add. Nothing moves until you approve a plan.</p>
+      <div class="setup-actions">
+        {#each defaults as item}
+          <button onclick={() => addRoot(item.path, item.kind)} disabled={busy}>Add {item.kind}</button>
+        {/each}
+        <button onclick={pickFolder} disabled={busy}>Choose a folder</button>
+      </div>
+    </section>
+  {/if}
 
   <section class="board">
     {#each lanes as lane}
@@ -310,16 +363,80 @@
 
   .root-path {
     color: #64748b;
+    max-width: 340px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .roots-label {
+    color: #475569;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    align-self: center;
+    margin-right: 2px;
+  }
+
+  .root-remove {
+    background: transparent;
+    border: 0;
+    color: #475569;
+    padding: 0 2px;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .root-remove:hover:not(:disabled) {
+    color: #f87171;
+  }
+
+  .add-root,
+  .quick-root {
+    background: transparent;
+    border: 1px dashed #334155;
+    color: #94a3b8;
+  }
+
+  .quick-root {
+    text-transform: capitalize;
+  }
+
+  .add-root:hover:not(:disabled),
+  .quick-root:hover:not(:disabled) {
+    border-color: #64748b;
+    color: #e2e8f0;
+  }
+
+  .setup {
+    background: #0f172a;
+    border: 1px solid #1e293b;
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+
+  .setup strong {
+    font-size: 16px;
+  }
+
+  .setup p {
+    color: #94a3b8;
+    font-size: 13px;
+    margin: 6px 0 14px;
+  }
+
+  .setup-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    text-transform: capitalize;
   }
 
   .empty {
     color: #64748b;
     font-size: 12px;
     padding: 8px 0;
-  }
-
-  .empty code {
-    color: #fbbf24;
   }
 
   .board {

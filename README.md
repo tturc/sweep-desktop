@@ -37,6 +37,18 @@ Scan -> Board -> Plan -> Apply -> Undo
 - **Undo** reverses the plan in LIFO order and verifies each step.
 - **Recover** reconciles an interrupted plan on the next start.
 
+## Roots
+
+Sweep does not assume a single folder. Add or remove any folder from the roots bar in the app. Desktop and Downloads are offered as one-click defaults, resolved through `dirs::desktop_dir()` and `dirs::download_dir()`: the Windows Known Folder API and XDG user directories on Linux. Each user's install resolves their own paths.
+
+The CLI can choose roots at setup time:
+
+```bash
+sweep init --root "C:\Users\me\Desktop" --root "C:\dev\scripts"
+```
+
+The workspace (the five lane folders) defaults to `~/Sweep`; the SQLite index lives under the user's local app data. Both are per-user and created on first run.
+
 ## The safety model
 
 Six invariants, each with a test:
