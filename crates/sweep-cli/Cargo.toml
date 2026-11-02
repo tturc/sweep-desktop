@@ -1,0 +1,16 @@
+[package]
+name = "sweep-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "sweep"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+chrono = "0.4"
+clap = { version = "4", features = ["derive", "env"] }
+sweep-core = { path = "../sweep-core" }
+serde_json = "1"
