@@ -49,6 +49,9 @@ pub fn build(
         if suggestion.confidence.rank() < min_confidence.rank() {
             continue;
         }
+        if lane_filter.is_none() && suggestion.lane == Lane::Bench {
+            continue;
+        }
         if let Some(lane) = lane_filter {
             if suggestion.lane != lane {
                 continue;

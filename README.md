@@ -24,6 +24,8 @@ Sweep organizes by decay, not by topic:
 
 Every suggestion carries its evidence: age, kind, size, whether it is a git repo, whether it has a remote. No model. No guessing. A deterministic policy over filesystem facts.
 
+**Bench stays in place.** The global plan moves Kits, Shelf, and high-confidence Cold items. It does not move Bench or Inbox; active and undecided files stay where they are. Use the lane button if you explicitly want to move them.
+
 ## What it does
 
 ```text

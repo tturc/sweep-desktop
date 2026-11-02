@@ -34,10 +34,10 @@ enum Command {
     Plan {
         #[arg(long)]
         lane: Option<String>,
-        #[arg(long, default_value = "high")]
-        confidence: String,
-        #[arg(long, default_value_t = 50)]
-        limit: usize,
+        #[arg(long)]
+        confidence: Option<String>,
+        #[arg(long)]
+        limit: Option<usize>,
         #[arg(long)]
         out: Option<PathBuf>,
     },
@@ -271,8 +271,8 @@ fn cmd_board(db_path: &Path, json: bool) -> Result<()> {
 fn cmd_plan(
     db_path: &Path,
     lane: Option<String>,
-    confidence: String,
-    limit: usize,
+    confidence: Option<String>,
+    limit: Option<usize>,
     out: Option<PathBuf>,
 ) -> Result<()> {
     let conn = db::open(db_path)?;
@@ -292,12 +292,21 @@ fn cmd_plan(
         Some("inbox") => Some(Lane::Inbox),
         Some(other) => bail!("unknown lane: {}", other),
     };
-    let confidence = match confidence.as_str() {
-        "high" => Confidence::High,
-        "medium" => Confidence::Medium,
-        "low" => Confidence::Low,
-        other => bail!("unknown confidence: {}", other),
+    let lane_selected = lane.is_some();
+    let confidence = match confidence.as_deref() {
+        Some("high") => Confidence::High,
+        Some("medium") => Confidence::Medium,
+        Some("low") => Confidence::Low,
+        Some(other) => bail!("unknown confidence: {}", other),
+        None => {
+            if lane_selected {
+                Confidence::Low
+            } else {
+                Confidence::High
+            }
+        }
     };
+    let limit = limit.unwrap_or(if lane_selected { 500 } else { 50 });
 
     let mut plan_file = plan::build(&roots, &zones, &items, lane, confidence, limit);
     if plan_file.ops.is_empty() {

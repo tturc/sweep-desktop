@@ -209,7 +209,14 @@ fn plan_impl(lane: Option<String>) -> anyhow::Result<plan_mod::PlanFile> {
         Some("inbox") => Some(Lane::Inbox),
         Some(other) => anyhow::bail!("unknown lane: {}", other),
     };
-    let mut plan = plan_mod::build(&roots, &zones, &items, lane, Confidence::High, 50);
+    let lane_selected = lane.is_some();
+    let min_confidence = if lane_selected {
+        Confidence::Low
+    } else {
+        Confidence::High
+    };
+    let limit = if lane_selected { 500 } else { 50 };
+    let mut plan = plan_mod::build(&roots, &zones, &items, lane, min_confidence, limit);
     if plan.ops.is_empty() {
         anyhow::bail!("no ops matched");
     }

@@ -142,7 +142,7 @@
     </div>
     <div class="actions">
       <button onclick={scan} disabled={busy}>Scan</button>
-      <button onclick={() => makePlan()} disabled={busy}>Plan all</button>
+      <button onclick={() => makePlan()} disabled={busy} title="Kits, Shelf, and high-confidence Cold. Bench stays in place; use Plan Bench to move it.">Plan safe</button>
       <button class="undo" onclick={undo} disabled={busy}>Undo</button>
     </div>
   </header>
@@ -207,7 +207,12 @@
             <div class="more-count">+{(board?.lanes[lane.id] ?? 0) - 5} more</div>
           {/if}
         </div>
-        <button class="lane-plan" onclick={() => makePlan(lane.id)} disabled={busy}>
+        <button
+          class="lane-plan"
+          onclick={() => makePlan(lane.id)}
+          disabled={busy || (board?.lanes[lane.id] ?? 0) === 0}
+          title={(board?.lanes[lane.id] ?? 0) === 0 ? "No items in this lane" : `Plan ${lane.label}`}
+        >
           Plan {lane.label}
         </button>
       </article>
@@ -219,7 +224,7 @@
       <header>
         <div>
           <h2>Plan preview</h2>
-          <p>{plan.ops.length} moves, dry run validated</p>
+          <p>{plan.ops.length} moves, dry run validated. Nothing moves until Apply.</p>
         </div>
         <button class="close" onclick={() => (plan = null)}>Close</button>
       </header>
