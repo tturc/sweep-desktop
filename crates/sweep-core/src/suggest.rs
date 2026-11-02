@@ -50,8 +50,36 @@ pub fn suggest(item: &Item, root_kind: &str) -> Option<Suggestion> {
                 })
             }
         }
-        Kind::Installer | Kind::Shortcut => {
+        Kind::Installer => {
             if age_days > 30 {
+                Some(Suggestion {
+                    lane: Lane::Shelf,
+                    confidence: Confidence::High,
+                    reasons,
+                })
+            } else {
+                Some(Suggestion {
+                    lane: Lane::Inbox,
+                    confidence: Confidence::Low,
+                    reasons,
+                })
+            }
+        }
+        Kind::Shortcut => {
+            let name = item.name.to_ascii_lowercase();
+            let target_is_script = item.ext.as_deref() == Some("lnk")
+                && [".ps1", ".py", ".sh", ".bat", ".cmd", ".js", ".ts"]
+                    .iter()
+                    .any(|extension| name.contains(extension));
+            if target_is_script {
+                let mut script_reasons = reasons;
+                script_reasons.push(Reason::NamePattern("shortcut to a script".to_string()));
+                Some(Suggestion {
+                    lane: Lane::Kits,
+                    confidence: Confidence::High,
+                    reasons: script_reasons,
+                })
+            } else if age_days > 30 {
                 Some(Suggestion {
                     lane: Lane::Shelf,
                     confidence: Confidence::High,

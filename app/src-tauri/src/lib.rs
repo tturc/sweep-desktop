@@ -113,7 +113,6 @@ fn board_impl() -> anyhow::Result<BoardView> {
             .cmp(&a.1.confidence.rank())
             .then_with(|| age_days(b.0).cmp(&age_days(a.0)))
     });
-    suggestions.truncate(24);
 
     let suggestion_views = suggestions
         .into_iter()

@@ -1,0 +1,12 @@
+Sweep crash-consistency harness
+Date: 2026-11-02
+Files: 500
+Kills: 50
+Delay: 20 ms per op (SWEEP_APPLY_DELAY_MS)
+Result: 50/50 clean recoveries
+Lost files: 0
+Duplicates: 0
+Zero-byte files: 0
+
+Each iteration: fresh 500-file tree, fresh DB, 500-op plan, kill mid-apply,
+sweep recover, assert every file exists exactly once at src or dst.

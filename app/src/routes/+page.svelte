@@ -136,7 +136,7 @@
           <span class="count">{board?.lanes[lane.id] ?? 0}</span>
         </header>
         <div class="cards">
-          {#each (board?.suggestions ?? []).filter((item) => item.lane === lane.id) as item}
+          {#each (board?.suggestions ?? []).filter((item) => item.lane === lane.id).slice(0, 5) as item}
             <div class="card">
               <strong title={item.name}>{item.name}</strong>
               <div class="meta">
@@ -149,6 +149,9 @@
           {/each}
           {#if (board?.suggestions ?? []).filter((item) => item.lane === lane.id).length === 0}
             <div class="blank">nothing here</div>
+          {/if}
+          {#if (board?.lanes[lane.id] ?? 0) > 5}
+            <div class="more-count">+{(board?.lanes[lane.id] ?? 0) - 5} more</div>
           {/if}
         </div>
         <button class="lane-plan" onclick={() => makePlan(lane.id)} disabled={busy}>
@@ -420,6 +423,13 @@
     font-size: 11px;
     text-align: center;
     padding: 20px 0;
+  }
+
+  .more-count {
+    color: #475569;
+    font-size: 10px;
+    text-align: center;
+    padding: 4px 0;
   }
 
   .lane-plan {
