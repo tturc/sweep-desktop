@@ -16,6 +16,11 @@ pub fn run(conn: &mut Connection, plan: &PlanFile, do_apply: bool, suffix: bool)
     }
 
     let mut applied = 0;
+    // Test hook for the crash harness: slow each op so a kill lands mid-apply.
+    let delay_ms = std::env::var("SWEEP_APPLY_DELAY_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .unwrap_or(0);
     for op in &ops {
         if op.state != "pending" {
             continue;
@@ -47,6 +52,9 @@ pub fn run(conn: &mut Connection, plan: &PlanFile, do_apply: bool, suffix: bool)
                 let actual_text = actual.to_string_lossy().to_string();
                 db::update_op_state(conn, op.id, "done", Some(&actual_text), None)?;
                 applied += 1;
+                if delay_ms > 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(delay_ms));
+                }
             }
             Err(err) => {
                 db::update_op_state(conn, op.id, "failed", None, Some(&err.to_string()))?;

@@ -1,4 +1,9 @@
 /target
+/app/node_modules
+/app/build
+/app/.svelte-kit
+/app/src-tauri/target
+/app/src-tauri/gen
 **/*.db
 **/*.db-wal
 **/*.db-shm
