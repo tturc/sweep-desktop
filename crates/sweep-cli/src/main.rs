@@ -1,8 +1,10 @@
-use anyhow::Result;
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use sweep_core::{db, paths, suggest, walk, Item, Lane, Suggestion};
+use sweep_core::{
+    apply, db, paths, plan, recover, suggest, undo, walk, Confidence, Item, Lane, Suggestion,
+};
 
 #[derive(Parser)]
 #[command(name = "sweep", version, about = "A local-first desktop organizer")]
@@ -29,6 +31,28 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    Plan {
+        #[arg(long)]
+        lane: Option<String>,
+        #[arg(long, default_value = "high")]
+        confidence: String,
+        #[arg(long, default_value_t = 50)]
+        limit: usize,
+        #[arg(long)]
+        out: Option<PathBuf>,
+    },
+    Apply {
+        plan: PathBuf,
+        #[arg(long)]
+        apply: bool,
+        #[arg(long)]
+        suffix: bool,
+    },
+    Undo {
+        #[arg(long)]
+        plan: Option<i64>,
+    },
+    Recover,
 }
 
 fn main() -> Result<()> {
@@ -39,6 +63,19 @@ fn main() -> Result<()> {
         Command::Init { roots, workspace } => cmd_init(&db_path, roots, workspace),
         Command::Scan { json } => cmd_scan(&db_path, json),
         Command::Board { json } => cmd_board(&db_path, json),
+        Command::Plan {
+            lane,
+            confidence,
+            limit,
+            out,
+        } => cmd_plan(&db_path, lane, confidence, limit, out),
+        Command::Apply {
+            plan,
+            apply,
+            suffix,
+        } => cmd_apply(&db_path, plan, apply, suffix),
+        Command::Undo { plan } => cmd_undo(&db_path, plan),
+        Command::Recover => cmd_recover(&db_path),
     }
 }
 
@@ -229,6 +266,79 @@ fn cmd_board(db_path: &Path, json: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn cmd_plan(
+    db_path: &Path,
+    lane: Option<String>,
+    confidence: String,
+    limit: usize,
+    out: Option<PathBuf>,
+) -> Result<()> {
+    let conn = db::open(db_path)?;
+    let roots = db::list_roots(&conn)?;
+    let zones = db::list_zones(&conn)?;
+    if roots.is_empty() {
+        bail!("no roots registered; run `sweep init` first");
+    }
+    let items = db::list_items(&conn)?;
+
+    let lane = match lane.as_deref() {
+        None => None,
+        Some("bench") => Some(Lane::Bench),
+        Some("kits") => Some(Lane::Kits),
+        Some("shelf") => Some(Lane::Shelf),
+        Some("cold") => Some(Lane::Cold),
+        Some("inbox") => Some(Lane::Inbox),
+        Some(other) => bail!("unknown lane: {}", other),
+    };
+    let confidence = match confidence.as_str() {
+        "high" => Confidence::High,
+        "medium" => Confidence::Medium,
+        "low" => Confidence::Low,
+        other => bail!("unknown confidence: {}", other),
+    };
+
+    let mut plan_file = plan::build(&roots, &zones, &items, lane, confidence, limit);
+    if plan_file.ops.is_empty() {
+        bail!("no ops matched");
+    }
+
+    let plan_id = db::insert_plan(&conn, "{}", "draft")?;
+    plan_file.plan_id = Some(plan_id);
+    db::update_plan_json(&conn, plan_id, &serde_json::to_string(&plan_file)?)?;
+    db::insert_ops(&conn, plan_id, &plan_file.ops)?;
+
+    let json = serde_json::to_string_pretty(&plan_file)?;
+    if let Some(path) = out {
+        std::fs::write(&path, &json)?;
+        println!(
+            "wrote {} ({} ops, plan {})",
+            path.display(),
+            plan_file.ops.len(),
+            plan_id
+        );
+    } else {
+        println!("{}", json);
+    }
+    Ok(())
+}
+
+fn cmd_apply(db_path: &Path, plan_path: PathBuf, do_apply: bool, suffix: bool) -> Result<()> {
+    let mut conn = db::open(db_path)?;
+    let text = std::fs::read_to_string(&plan_path)?;
+    let plan_file: plan::PlanFile = serde_json::from_str(&text)?;
+    apply::run(&mut conn, &plan_file, do_apply, suffix)
+}
+
+fn cmd_undo(db_path: &Path, plan_id: Option<i64>) -> Result<()> {
+    let mut conn = db::open(db_path)?;
+    undo::run(&mut conn, plan_id)
+}
+
+fn cmd_recover(db_path: &Path) -> Result<()> {
+    let mut conn = db::open(db_path)?;
+    recover::run(&mut conn)
 }
 
 fn age_days(item: &Item) -> i64 {

@@ -1,4 +1,5 @@
 use crate::model::{Item, Kind, Lane};
+use crate::plan::PlanOp;
 use crate::walk::ScannedItem;
 use anyhow::Result;
 use rusqlite::{params, Connection};
@@ -243,4 +244,153 @@ pub fn list_items(conn: &Connection) -> Result<Vec<Item>> {
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+
+pub struct ZoneRow {
+    pub id: i64,
+    pub name: String,
+    pub path: Option<String>,
+    pub cap: Option<i64>,
+}
+
+pub struct PlanRow {
+    pub id: i64,
+    pub created_at: i64,
+    pub status: String,
+    pub ops_json: String,
+    pub note: Option<String>,
+}
+
+pub struct OpRow {
+    pub id: i64,
+    pub plan_id: i64,
+    pub seq: i64,
+    pub kind: String,
+    pub src: String,
+    pub dst: Option<String>,
+    pub dst_actual: Option<String>,
+    pub state: String,
+    pub error: Option<String>,
+}
+
+pub fn list_zones(conn: &Connection) -> Result<Vec<ZoneRow>> {
+    let mut stmt = conn.prepare("SELECT id, name, path, cap FROM zone ORDER BY position")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(ZoneRow {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            path: row.get(2)?,
+            cap: row.get(3)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn insert_plan(conn: &Connection, ops_json: &str, status: &str) -> Result<i64> {
+    conn.execute(
+        "INSERT INTO plan (created_at, status, ops_json, note) VALUES (?1, ?2, ?3, NULL)",
+        params![chrono::Utc::now().timestamp(), status, ops_json],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn update_plan_json(conn: &Connection, plan_id: i64, ops_json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE plan SET ops_json = ?1 WHERE id = ?2",
+        params![ops_json, plan_id],
+    )?;
+    Ok(())
+}
+
+pub fn insert_ops(conn: &Connection, plan_id: i64, ops: &[PlanOp]) -> Result<()> {
+    for op in ops {
+        conn.execute(
+            "INSERT INTO op (plan_id, seq, kind, src, dst, state)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'pending')",
+            params![plan_id, op.seq, &op.kind, &op.src, &op.dst],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn list_ops(conn: &Connection, plan_id: i64) -> Result<Vec<OpRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, plan_id, seq, kind, src, dst, dst_actual, state, error
+         FROM op WHERE plan_id = ?1 ORDER BY seq",
+    )?;
+    let rows = stmt.query_map([plan_id], |row| {
+        Ok(OpRow {
+            id: row.get(0)?,
+            plan_id: row.get(1)?,
+            seq: row.get(2)?,
+            kind: row.get(3)?,
+            src: row.get(4)?,
+            dst: row.get(5)?,
+            dst_actual: row.get(6)?,
+            state: row.get(7)?,
+            error: row.get(8)?,
+        })
+    })?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+pub fn update_op_state(
+    conn: &Connection,
+    op_id: i64,
+    state: &str,
+    dst_actual: Option<&str>,
+    error: Option<&str>,
+) -> Result<()> {
+    conn.execute(
+        "UPDATE op SET state = ?1, dst_actual = COALESCE(?2, dst_actual), error = ?3 WHERE id = ?4",
+        params![state, dst_actual, error, op_id],
+    )?;
+    Ok(())
+}
+
+pub fn update_plan_status(conn: &Connection, plan_id: i64, status: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE plan SET status = ?1 WHERE id = ?2",
+        params![status, plan_id],
+    )?;
+    Ok(())
+}
+
+pub fn get_plan(conn: &Connection, plan_id: i64) -> Result<Option<PlanRow>> {
+    let mut stmt =
+        conn.prepare("SELECT id, created_at, status, ops_json, note FROM plan WHERE id = ?1")?;
+    let mut rows = stmt.query_map([plan_id], plan_row)?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
+pub fn last_plan(conn: &Connection) -> Result<Option<PlanRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, created_at, status, ops_json, note FROM plan ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map([], plan_row)?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
+pub fn list_plans(conn: &Connection) -> Result<Vec<PlanRow>> {
+    let mut stmt =
+        conn.prepare("SELECT id, created_at, status, ops_json, note FROM plan ORDER BY id")?;
+    let rows = stmt.query_map([], plan_row)?;
+    Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+fn plan_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanRow> {
+    Ok(PlanRow {
+        id: row.get(0)?,
+        created_at: row.get(1)?,
+        status: row.get(2)?,
+        ops_json: row.get(3)?,
+        note: row.get(4)?,
+    })
 }
