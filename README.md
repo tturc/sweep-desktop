@@ -6,6 +6,10 @@ Sweep is a local-first desktop organizer for the folder you never open. It scans
 
 No cloud. No account. No network code. Offline is the architecture.
 
+<img src="docs/mascot.png" alt="Sweep mascot" width="260" />
+
+*Mascot generated with Grok Imagine.*
+
 ## The idea
 
 The desktop is not a filing cabinet. It is a queue of undecided files. The expensive question is "what is this?" The filesystem already answers the cheap, reliable question: "when did I last touch it?"
@@ -158,6 +162,12 @@ Launch the app from an interactive desktop session. WebView2 will not create a w
 ## Why Rust
 
 The core is a filesystem engine with crash-consistency requirements. Rust gives safe path handling, a real CLI, a small binary, and a test harness that can kill the process mid-move and prove recovery.
+
+## Model declaration
+
+- **Code and build:** Claude Opus 5.5 via Claude Code (architecture, review); DeepSeek V4.1 via Hermes Agent (implementation, tests).
+- **Mascot art:** Grok Imagine (xAI).
+- **Runtime:** no model. Sweep is deterministic and offline.
 
 ## License
 

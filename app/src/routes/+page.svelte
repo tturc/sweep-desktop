@@ -146,7 +146,7 @@
 <main class="shell">
   <header class="top">
     <div class="brand">
-      <div class="mark">S</div>
+      <div class="mark"><img src="/mascot-mark.png" alt="Sweep mascot" /></div>
       <div>
         <h1>Sweep</h1>
         <p>Your desktop, swept. Every move is reversible.</p>
@@ -179,14 +179,17 @@
 
   {#if (board?.roots?.length ?? 0) === 0}
     <section class="setup">
-      <strong>Choose what Sweep can see.</strong>
-      <p>Sweep only reads the folders you add. Nothing moves until you approve a plan.</p>
-      <div class="setup-actions">
-        {#each defaults as item}
-          <button onclick={() => addRoot(item.path, item.kind)} disabled={busy}>Add {item.kind}</button>
-        {/each}
-        <button onclick={pickFolder} disabled={busy}>Choose a folder</button>
+      <div class="setup-copy">
+        <strong>Choose what Sweep can see.</strong>
+        <p>Sweep only reads the folders you add. Nothing moves until you approve a plan.</p>
+        <div class="setup-actions">
+          {#each defaults as item}
+            <button onclick={() => addRoot(item.path, item.kind)} disabled={busy}>Add {item.kind}</button>
+          {/each}
+          <button onclick={pickFolder} disabled={busy}>Choose a folder</button>
+        </div>
       </div>
+      <img class="setup-mascot" src="/mascot-full.png" alt="Sweep mascot" />
     </section>
   {/if}
 
@@ -237,9 +240,12 @@
   {#if plan}
     <aside class="drawer">
       <header>
-        <div>
-          <h2>Plan preview</h2>
-          <p>{plan.ops.length} moves · {plan.held.length} held back. Dry run validated; nothing moves until Apply.</p>
+        <div class="drawer-title">
+          <img class="drawer-mascot" src="/mascot-mark.png" alt="" />
+          <div>
+            <h2>Plan preview</h2>
+            <p>{plan.ops.length} moves · {plan.held.length} held back. Dry run validated; nothing moves until Apply.</p>
+          </div>
         </div>
         <button class="close" onclick={() => (plan = null)}>Close</button>
       </header>
@@ -324,12 +330,17 @@
     width: 44px;
     height: 44px;
     border-radius: 12px;
-    background: linear-gradient(135deg, #f59e0b, #ef4444);
-    display: grid;
-    place-items: center;
-    font-weight: 800;
-    color: #0b0f14;
-    font-size: 20px;
+    overflow: hidden;
+    background: #0b1b3a;
+    flex: none;
+    box-shadow: 0 0 0 1px #334155 inset;
+  }
+
+  .mark img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
   }
 
   h1 {
@@ -453,6 +464,23 @@
     border-radius: 12px;
     padding: 20px;
     margin-bottom: 16px;
+    display: flex;
+    gap: 22px;
+    align-items: center;
+  }
+
+  .setup-copy {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .setup-mascot {
+    width: 160px;
+    height: auto;
+    flex: none;
+    border-radius: 12px;
+    background: #f3f1ef;
+    padding: 8px;
   }
 
   .setup strong {
@@ -683,6 +711,20 @@
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
+    gap: 10px;
+  }
+
+  .drawer-title {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+  }
+
+  .drawer-mascot {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    flex: none;
   }
 
   .drawer h2 {
@@ -766,6 +808,16 @@
   @media (max-width: 1100px) {
     .board {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 700px) {
+    .setup {
+      flex-wrap: wrap;
+    }
+
+    .setup-mascot {
+      width: 120px;
     }
   }
 </style>
