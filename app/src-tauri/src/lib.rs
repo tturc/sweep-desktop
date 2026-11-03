@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
 use sweep_core::{
-    apply as apply_mod, db, paths, plan as plan_mod, recover as recover_mod, suggest,
+    apply as apply_mod, db, paths, plan as plan_mod, recover as recover_mod, safety, suggest,
     undo as undo_mod, walk, Confidence, Item, Lane, Suggestion,
 };
 
@@ -21,6 +21,8 @@ struct SuggestionView {
     age_days: i64,
     lane: String,
     confidence: String,
+    safety: String,
+    safety_reason: Option<String>,
     reasons: Vec<String>,
 }
 
@@ -108,10 +110,7 @@ pub fn run() {
 fn board_impl() -> anyhow::Result<BoardView> {
     let conn = db::open(&paths::default_db_path())?;
     let roots = db::list_roots(&conn)?;
-    let root_kind: HashMap<i64, String> = roots
-        .iter()
-        .map(|root| (root.id, root.kind.clone()))
-        .collect();
+    let root_map: HashMap<i64, &_> = roots.iter().map(|root| (root.id, root)).collect();
     let items = db::list_items(&conn)?;
     let mut lanes: HashMap<String, i64> = Lane::all()
         .iter()
@@ -120,11 +119,10 @@ fn board_impl() -> anyhow::Result<BoardView> {
     let mut suggestions: Vec<(&Item, Suggestion)> = Vec::new();
 
     for item in &items {
-        let kind = root_kind
-            .get(&item.root_id)
-            .map(|value| value.as_str())
-            .unwrap_or("custom");
-        if let Some(suggestion) = suggest::suggest(item, kind) {
+        let Some(root) = root_map.get(&item.root_id) else {
+            continue;
+        };
+        if let Some(suggestion) = suggest::suggest(item, &root.kind) {
             *lanes
                 .entry(suggestion.lane.as_str().to_string())
                 .or_insert(0) += 1;
@@ -143,17 +141,23 @@ fn board_impl() -> anyhow::Result<BoardView> {
 
     let suggestion_views = suggestions
         .into_iter()
-        .map(|(item, suggestion)| SuggestionView {
-            name: item.name.clone(),
-            kind: item.kind.as_str().to_string(),
-            age_days: age_days(item),
-            lane: suggestion.lane.as_str().to_string(),
-            confidence: suggestion.confidence.as_str().to_string(),
-            reasons: suggestion
-                .reasons
-                .iter()
-                .map(|reason| reason.label())
-                .collect(),
+        .map(|(item, suggestion)| {
+            let src = Path::new(&root_map.get(&item.root_id).unwrap().path).join(&item.rel_path);
+            let assessment = safety::assess(&src, &item.name, src.is_dir(), item.is_repo);
+            SuggestionView {
+                name: item.name.clone(),
+                kind: item.kind.as_str().to_string(),
+                age_days: age_days(item),
+                lane: suggestion.lane.as_str().to_string(),
+                confidence: suggestion.confidence.as_str().to_string(),
+                safety: assessment.safety.as_str().to_string(),
+                safety_reason: assessment.reason,
+                reasons: suggestion
+                    .reasons
+                    .iter()
+                    .map(|reason| reason.label())
+                    .collect(),
+            }
         })
         .collect();
 
@@ -171,7 +175,7 @@ fn board_impl() -> anyhow::Result<BoardView> {
         roots: root_views,
         lanes,
         suggestions: suggestion_views,
-        last_plan_status: db::last_plan(&conn)?.map(|plan| plan.status),
+        last_plan_status: db::last_applied_plan(&conn)?.map(|plan| plan.status),
     })
 }
 
@@ -217,7 +221,7 @@ fn plan_impl(lane: Option<String>) -> anyhow::Result<plan_mod::PlanFile> {
     };
     let limit = if lane_selected { 500 } else { 50 };
     let mut plan = plan_mod::build(&roots, &zones, &items, lane, min_confidence, limit);
-    if plan.ops.is_empty() {
+    if plan.ops.is_empty() && plan.held.is_empty() {
         anyhow::bail!("no ops matched");
     }
     let plan_id = db::insert_plan(&conn, "{}", "draft")?;
@@ -230,7 +234,7 @@ fn plan_impl(lane: Option<String>) -> anyhow::Result<plan_mod::PlanFile> {
 fn apply_impl(plan: plan_mod::PlanFile) -> anyhow::Result<String> {
     let mut conn = db::open(&paths::default_db_path())?;
     let count = plan.ops.len();
-    apply_mod::run(&mut conn, &plan, true, false)?;
+    apply_mod::run(&mut conn, &plan, true, true)?;
     scan_impl()?;
     Ok(format!("applied {} ops", count))
 }

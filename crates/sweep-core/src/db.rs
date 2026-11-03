@@ -1,4 +1,4 @@
-use crate::model::{Item, Kind, Lane};
+use crate::model::{Item, Kind, Lane, Safety};
 use crate::plan::PlanOp;
 use crate::walk::ScannedItem;
 use anyhow::Result;
@@ -70,6 +70,8 @@ fn init_schema(conn: &Connection) -> Result<()> {
             zone_id INTEGER REFERENCES zone(id),
             pinned INTEGER NOT NULL DEFAULT 0,
             review_by INTEGER,
+            safety TEXT NOT NULL DEFAULT 'safe',
+            safety_reason TEXT,
             last_seen_scan INTEGER NOT NULL,
             UNIQUE(root_id, rel_path)
         );
@@ -98,6 +100,27 @@ fn init_schema(conn: &Connection) -> Result<()> {
         );
         "#,
     )?;
+    ensure_column(
+        conn,
+        "item",
+        "safety",
+        "safety TEXT NOT NULL DEFAULT 'safe'",
+    )?;
+    ensure_column(conn, "item", "safety_reason", "safety_reason TEXT")?;
+    Ok(())
+}
+
+fn ensure_column(conn: &Connection, table: &str, column: &str, definition: &str) -> Result<()> {
+    let mut stmt = conn.prepare(&format!("PRAGMA table_info({})", table))?;
+    let names: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    if !names.iter().any(|name| name == column) {
+        conn.execute(
+            &format!("ALTER TABLE {} ADD COLUMN {}", table, definition),
+            [],
+        )?;
+    }
     Ok(())
 }
 
@@ -200,8 +223,8 @@ pub fn replace_items_for_root(
         let mut stmt = tx.prepare(
             "INSERT INTO item
              (root_id, rel_path, name, ext, kind, size, mtime, ctime,
-              is_repo, has_remote, is_hidden, is_placeholder, last_seen_scan)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+              is_repo, has_remote, is_hidden, is_placeholder, safety, safety_reason, last_seen_scan)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         )?;
         for item in items {
             stmt.execute(params![
@@ -217,6 +240,8 @@ pub fn replace_items_for_root(
                 item.has_remote as i64,
                 item.is_hidden as i64,
                 item.is_placeholder as i64,
+                item.safety.as_str(),
+                item.safety_reason.as_deref(),
                 scan_ts,
             ])?;
         }
@@ -228,11 +253,13 @@ pub fn replace_items_for_root(
 pub fn list_items(conn: &Connection) -> Result<Vec<Item>> {
     let mut stmt = conn.prepare(
         "SELECT id, root_id, rel_path, name, ext, kind, size, mtime, ctime,
-                is_repo, has_remote, is_hidden, is_placeholder, pinned, review_by
+                is_repo, has_remote, is_hidden, is_placeholder, pinned, review_by,
+                safety, safety_reason
          FROM item",
     )?;
     let rows = stmt.query_map([], |row| {
         let kind_text: String = row.get(5)?;
+        let safety_text: String = row.get(15)?;
         Ok(Item {
             id: row.get(0)?,
             root_id: row.get(1)?,
@@ -249,6 +276,8 @@ pub fn list_items(conn: &Connection) -> Result<Vec<Item>> {
             is_placeholder: row.get::<_, i64>(12)? != 0,
             pinned: row.get::<_, i64>(13)? != 0,
             review_by: row.get(14)?,
+            safety: Safety::from_str(&safety_text),
+            safety_reason: row.get(16)?,
         })
     })?;
     Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
@@ -386,6 +415,19 @@ pub fn last_plan(conn: &Connection) -> Result<Option<PlanRow>> {
     }
 }
 
+pub fn last_applied_plan(conn: &Connection) -> Result<Option<PlanRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, created_at, status, ops_json, note FROM plan
+         WHERE status IN ('applied', 'partial')
+         ORDER BY id DESC LIMIT 1",
+    )?;
+    let mut rows = stmt.query_map([], plan_row)?;
+    match rows.next() {
+        Some(row) => Ok(Some(row?)),
+        None => Ok(None),
+    }
+}
+
 pub fn list_plans(conn: &Connection) -> Result<Vec<PlanRow>> {
     let mut stmt =
         conn.prepare("SELECT id, created_at, status, ops_json, note FROM plan ORDER BY id")?;
@@ -401,4 +443,32 @@ fn plan_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlanRow> {
         ops_json: row.get(3)?,
         note: row.get(4)?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+
+    #[test]
+    fn last_applied_plan_ignores_a_newer_draft() {
+        let dir = std::env::temp_dir().join(format!(
+            "sweep-db-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, Ordering::SeqCst)
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let db_path = dir.join("sweep.db");
+        let conn = open(&db_path).unwrap();
+        let applied = insert_plan(&conn, "{}", "applied").unwrap();
+        let _draft = insert_plan(&conn, "{}", "draft").unwrap();
+
+        let picked = last_applied_plan(&conn).unwrap().unwrap();
+        assert_eq!(picked.id, applied);
+
+        drop(conn);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

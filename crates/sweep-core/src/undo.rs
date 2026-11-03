@@ -6,7 +6,8 @@ use std::path::PathBuf;
 pub fn run(conn: &mut Connection, plan_id: Option<i64>) -> Result<()> {
     let plan = match plan_id {
         Some(id) => db::get_plan(conn, id)?.ok_or_else(|| anyhow::anyhow!("plan {} not found", id))?,
-        None => db::last_plan(conn)?.ok_or_else(|| anyhow::anyhow!("no plans to undo"))?,
+        None => db::last_applied_plan(conn)?
+            .ok_or_else(|| anyhow::anyhow!("no applied plans to undo"))?,
     };
     let ops = db::list_ops(conn, plan.id)?;
     let mut undone = 0;

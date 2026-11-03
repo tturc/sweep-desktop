@@ -228,6 +228,8 @@ fn cmd_board(db_path: &Path, json: bool) -> Result<()> {
                     "age_days": age_days(item),
                     "lane": suggestion.lane.as_str(),
                     "confidence": suggestion.confidence.as_str(),
+                    "safety": item.safety.as_str(),
+                    "safety_reason": item.safety_reason,
                     "reasons": suggestion.reasons.iter().map(|reason| reason.label()).collect::<Vec<_>>(),
                 })
             })
@@ -309,7 +311,7 @@ fn cmd_plan(
     let limit = limit.unwrap_or(if lane_selected { 500 } else { 50 });
 
     let mut plan_file = plan::build(&roots, &zones, &items, lane, confidence, limit);
-    if plan_file.ops.is_empty() {
+    if plan_file.ops.is_empty() && plan_file.held.is_empty() {
         bail!("no ops matched");
     }
 
@@ -322,9 +324,10 @@ fn cmd_plan(
     if let Some(path) = out {
         std::fs::write(&path, &json)?;
         println!(
-            "wrote {} ({} ops, plan {})",
+            "wrote {} ({} ops, {} held, plan {})",
             path.display(),
             plan_file.ops.len(),
+            plan_file.held.len(),
             plan_id
         );
     } else {

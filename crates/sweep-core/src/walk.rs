@@ -1,5 +1,6 @@
 use crate::classify::{classify, has_git_remote};
-use crate::model::Kind;
+use crate::model::{Kind, Safety};
+use crate::safety;
 use anyhow::Result;
 use std::path::Path;
 use walkdir::{DirEntry, WalkDir};
@@ -18,6 +19,8 @@ pub struct ScannedItem {
     pub has_remote: bool,
     pub is_hidden: bool,
     pub is_placeholder: bool,
+    pub safety: Safety,
+    pub safety_reason: Option<String>,
 }
 
 pub fn scan_root(root: &Path, depth_limit: Option<usize>) -> Result<Vec<ScannedItem>> {
@@ -57,6 +60,8 @@ pub fn scan_root(root: &Path, depth_limit: Option<usize>) -> Result<Vec<ScannedI
             .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|duration| duration.as_secs() as i64);
 
+        let assessment = safety::assess(entry.path(), &name, is_dir, is_repo);
+
         out.push(ScannedItem {
             rel_path: rel.to_string_lossy().to_string(),
             name: name.clone(),
@@ -69,6 +74,8 @@ pub fn scan_root(root: &Path, depth_limit: Option<usize>) -> Result<Vec<ScannedI
             has_remote,
             is_hidden: name.starts_with('.'),
             is_placeholder: false,
+            safety: assessment.safety,
+            safety_reason: assessment.reason,
         });
     }
 

@@ -87,6 +87,42 @@ pub enum Confidence {
     Low,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Safety {
+    Safe,
+    Review,
+    Blocked,
+}
+
+impl Default for Safety {
+    fn default() -> Self {
+        Safety::Safe
+    }
+}
+
+impl Safety {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Safety::Safe => "safe",
+            Safety::Review => "review",
+            Safety::Blocked => "blocked",
+        }
+    }
+
+    pub fn is_safe(self) -> bool {
+        matches!(self, Safety::Safe)
+    }
+
+    pub fn from_str(value: &str) -> Safety {
+        match value {
+            "review" => Safety::Review,
+            "blocked" => Safety::Blocked,
+            _ => Safety::Safe,
+        }
+    }
+}
+
 impl Confidence {
     pub fn as_str(self) -> &'static str {
         match self {
@@ -147,6 +183,10 @@ pub struct Item {
     pub is_placeholder: bool,
     pub pinned: bool,
     pub review_by: Option<i64>,
+    #[serde(default)]
+    pub safety: Safety,
+    #[serde(default)]
+    pub safety_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

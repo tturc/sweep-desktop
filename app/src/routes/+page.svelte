@@ -5,12 +5,15 @@
 
   type Root = { id: number; path: string; kind: string; items: number };
   type DefaultRoot = { path: string; kind: string; registered: boolean };
+  type Safety = "safe" | "review" | "blocked";
   type Suggestion = {
     name: string;
     kind: string;
     age_days: number;
     lane: string;
     confidence: string;
+    safety: Safety;
+    safety_reason: string | null;
     reasons: string[];
   };
   type Board = {
@@ -20,12 +23,20 @@
     last_plan_status: string | null;
   };
   type PlanOp = { seq: number; kind: string; src: string; dst: string; reason: string };
+  type HeldItem = {
+    name: string;
+    path: string;
+    lane: string;
+    safety: Safety;
+    reason: string;
+  };
   type Plan = {
     version: number;
     plan_id: number | null;
     workspace: string;
     created_at: string;
     ops: PlanOp[];
+    held: HeldItem[];
   };
 
   const lanes = [
@@ -96,8 +107,9 @@
   async function makePlan(lane?: string) {
     busy = true;
     try {
-      plan = await invoke<Plan>("create_plan", { lane: lane ?? null });
-      message = `${plan.ops.length} moves ready.`;
+      const created = await invoke<Plan>("create_plan", { lane: lane ?? null });
+      plan = created;
+      message = `${created.ops.length} moves ready${created.held.length ? ` · ${created.held.length} held back` : ""}.`;
     } catch (error) {
       message = String(error);
     }
@@ -196,6 +208,9 @@
                 <span>{item.kind}</span>
                 <span>{item.age_days}d</span>
                 <span class={`conf ${item.confidence}`}>{item.confidence}</span>
+                {#if item.safety !== "safe"}
+                  <span class={`safety ${item.safety}`} title={item.safety_reason ?? ""}>{item.safety}</span>
+                {/if}
               </div>
               <p>{item.reasons.join(" · ")}</p>
             </div>
@@ -224,12 +239,12 @@
       <header>
         <div>
           <h2>Plan preview</h2>
-          <p>{plan.ops.length} moves, dry run validated. Nothing moves until Apply.</p>
+          <p>{plan.ops.length} moves · {plan.held.length} held back. Dry run validated; nothing moves until Apply.</p>
         </div>
         <button class="close" onclick={() => (plan = null)}>Close</button>
       </header>
       <div class="ops">
-        {#each plan.ops.slice(0, 10) as op}
+        {#each plan.ops as op}
           <div class="op">
             <span class="seq">{op.seq}</span>
             <div>
@@ -238,11 +253,30 @@
             </div>
           </div>
         {/each}
-        {#if plan.ops.length > 10}
-          <p class="more">+ {plan.ops.length - 10} more</p>
+        {#if plan.ops.length === 0}
+          <p class="more">No safe moves in this plan.</p>
         {/if}
       </div>
-      <button class="apply" onclick={applyPlan} disabled={busy}>Apply {plan.ops.length} moves</button>
+      {#if plan.held.length > 0}
+        <section class="held">
+          <h3>Held back</h3>
+          <p class="held-note">
+            Blocked and review items are never in the plan. Eventually Sweep can ask before moving a review item.
+          </p>
+          {#each plan.held as item}
+            <div class="held-item">
+              <span class={`safety ${item.safety}`}>{item.safety}</span>
+              <div>
+                <strong>{item.name}</strong>
+                <small>{item.reason}</small>
+              </div>
+            </div>
+          {/each}
+        </section>
+      {/if}
+      {#if plan.ops.length > 0}
+        <button class="apply" onclick={applyPlan} disabled={busy}>Apply {plan.ops.length} moves</button>
+      {/if}
     </aside>
   {/if}
 
@@ -531,6 +565,68 @@
 
   .conf.low {
     color: #64748b;
+  }
+
+  .safety {
+    border-radius: 999px;
+    padding: 1px 6px;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border: 1px solid currentColor;
+  }
+
+  .safety.review {
+    color: #fbbf24;
+  }
+
+  .safety.blocked {
+    color: #f87171;
+  }
+
+  .held {
+    margin: 4px 0 14px;
+    border-top: 1px solid #1e293b;
+    padding-top: 12px;
+  }
+
+  .held h3 {
+    margin: 0 0 4px;
+    font-size: 12px;
+    color: #f87171;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .held-note {
+    margin: 0 0 8px;
+    color: #64748b;
+    font-size: 10px;
+    line-height: 1.4;
+  }
+
+  .held-item {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+    padding: 4px 0;
+    font-size: 11px;
+  }
+
+  .held-item .safety {
+    flex: none;
+    margin-top: 1px;
+  }
+
+  .held-item strong {
+    display: block;
+    color: #e2e8f0;
+  }
+
+  .held-item small {
+    display: block;
+    color: #64748b;
+    line-height: 1.35;
   }
 
   .card p {
