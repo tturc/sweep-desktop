@@ -83,7 +83,7 @@ The core has unit and integration tests for the classifier, collision handling, 
 
 | Claim | Result |
 |---|---|
-| Scan the real desktop + Downloads | **73 + 38 items in 12 ms** |
+| Scan the real desktop + Downloads | **75 + 43 items in 36 ms** |
 | Crash harness | **500 files, 50 random kills, 50/50 clean recoveries, 0 lost files** |
 | Duplicates after recovery | 0 |
 | Zero-byte or partial files | 0 |
